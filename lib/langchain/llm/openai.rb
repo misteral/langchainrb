@@ -74,6 +74,7 @@ module Langchain::LLM
       parameters[:messages] = compose_chat_messages(prompt: prompt)
       parameters[:max_tokens] = validate_max_tokens(parameters[:messages], parameters[:model])
 
+      Langchain.logger.info("LLM client parameters \"#{parameters.to_json}\"", for: self.class)
       response = with_api_error_handling do
         client.chat(parameters: parameters)
       end
@@ -146,14 +147,17 @@ module Langchain::LLM
         end
       end
 
+      Langchain.logger.info("LLM client parameters \"#{parameters}\"", for: self.class)
+
       response = with_api_error_handling do
         client.chat(parameters: parameters)
       end
 
       unless streaming
         message = response.dig("choices", 0, "message")
+        usage = response.dig("usage")
         content = message["content"]
-        additional_kwargs = {function_call: message["function_call"]}.compact
+        additional_kwargs = {function_call: message["function_call"], usage: usage}.compact
         Langchain::AIMessage.new(content.to_s, additional_kwargs)
       end
     end
