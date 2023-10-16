@@ -11,6 +11,7 @@ module Langchain::LLM
   #
   class OpenAI < Base
     DEFAULTS = {
+      n: 1,
       temperature: 0.0,
       completion_model_name: "gpt-3.5-turbo",
       chat_completion_model_name: "gpt-3.5-turbo",
@@ -26,10 +27,6 @@ module Langchain::LLM
     ].freeze
 
     LENGTH_VALIDATOR = Langchain::Utils::TokenLength::OpenAIValidator
-    ROLE_MAPPING = {
-      "ai" => "assistant",
-      "human" => "user"
-    }
 
     attr_accessor :functions
 
@@ -45,7 +42,7 @@ module Langchain::LLM
     #
     # @param text [String] The text to generate an embedding for
     # @param params extra parameters passed to OpenAI::Client#embeddings
-    # @return [Array] The embedding
+    # @return [Langchain::LLM::OpenAIResponse] Response object
     #
     def embed(text:, **params)
       parameters = {model: @defaults[:embeddings_model_name], input: text}
@@ -56,7 +53,7 @@ module Langchain::LLM
         client.embeddings(parameters: parameters.merge(params))
       end
 
-      response.dig("data").first.dig("embedding")
+      Langchain::LLM::OpenAIResponse.new(response)
     end
 
     #
@@ -64,7 +61,7 @@ module Langchain::LLM
     #
     # @param prompt [String] The prompt to generate a completion for
     # @param params  extra parameters passed to OpenAI::Client#complete
-    # @return [String] The completion
+    # @return [Langchain::LLM::Response::OpenaAI] Response object
     #
     def complete(prompt:, **params)
       parameters = compose_parameters @defaults[:completion_model_name], params
@@ -79,7 +76,7 @@ module Langchain::LLM
         client.chat(parameters: parameters)
       end
 
-      response.dig("choices", 0, "message", "content")
+      Langchain::LLM::OpenAIResponse.new(response)
     end
 
     #
@@ -118,18 +115,18 @@ module Langchain::LLM
     #         },
     #       ]
     #
-    # @param prompt [HumanMessage] The prompt to generate a chat completion for
-    # @param messages [Array<AIMessage|HumanMessage>] The messages that have been sent in the conversation
-    # @param context [SystemMessage] An initial context to provide as a system message, ie "You are RubyGPT, a helpful chat bot for helping people learn Ruby"
-    # @param examples [Array<AIMessage|HumanMessage>] Examples of messages to provide to the model. Useful for Few-Shot Prompting
+    # @param prompt [String] The prompt to generate a chat completion for
+    # @param messages [Array<Hash>] The messages that have been sent in the conversation
+    # @param context [String] An initial context to provide as a system message, ie "You are RubyGPT, a helpful chat bot for helping people learn Ruby"
+    # @param examples [Array<Hash>] Examples of messages to provide to the model. Useful for Few-Shot Prompting
     # @param options [Hash] extra parameters passed to OpenAI::Client#chat
-    # @yield [AIMessage] Stream responses back one String at a time
-    # @return [AIMessage] The chat completion
+    # @yield [Hash] Stream responses back one token at a time
+    # @return [Langchain::LLM::OpenAIResponse] Response object
     #
-    def chat(prompt: "", messages: [], context: "", examples: [], **options)
+    def chat(prompt: "", messages: [], context: "", examples: [], **options, &block)
       raise ArgumentError.new(":prompt or :messages argument is expected") if prompt.empty? && messages.empty?
 
-      parameters = compose_parameters @defaults[:chat_completion_model_name], options
+      parameters = compose_parameters @defaults[:chat_completion_model_name], options, &block
       parameters[:messages] = compose_chat_messages(prompt: prompt, messages: messages, context: context, examples: examples)
 
       if functions
@@ -138,28 +135,12 @@ module Langchain::LLM
         parameters[:max_tokens] = validate_max_tokens(parameters[:messages], parameters[:model])
       end
 
-      if (streaming = block_given?)
-        parameters[:stream] = proc do |chunk, _bytesize|
-          delta = chunk.dig("choices", 0, "delta")
-          content = delta["content"]
-          additional_kwargs = {function_call: delta["function_call"]}.compact
-          yield Langchain::AIMessage.new(content, additional_kwargs)
-        end
-      end
+      Langchain.logger.info("LLM client parameters \"#{parameters.to_json}\"", for: self.class)
+      response = with_api_error_handling { client.chat(parameters: parameters) }
 
-      Langchain.logger.info("LLM client parameters \"#{parameters}\"", for: self.class)
+      return if block
 
-      response = with_api_error_handling do
-        client.chat(parameters: parameters)
-      end
-
-      unless streaming
-        message = response.dig("choices", 0, "message")
-        usage = response.dig("usage")
-        content = message["content"]
-        additional_kwargs = {function_call: message["function_call"], usage: usage}.compact
-        Langchain::AIMessage.new(content.to_s, additional_kwargs)
-      end
+      Langchain::LLM::OpenAIResponse.new(response)
     end
 
     #
@@ -175,6 +156,7 @@ module Langchain::LLM
       prompt = prompt_template.format(text: text)
 
       complete(prompt: prompt, temperature: @defaults[:temperature])
+      # Should this return a Langchain::LLM::OpenAIResponse as well?
     end
 
     private
@@ -195,12 +177,18 @@ module Langchain::LLM
       response.dig("choices", 0, "text")
     end
 
-    def compose_parameters(model, params)
-      default_params = {model: model, temperature: @defaults[:temperature]}
-
+    def compose_parameters(model, params, &block)
+      default_params = {model: model, temperature: @defaults[:temperature], n: @defaults[:n]}
       default_params[:stop] = params.delete(:stop_sequences) if params[:stop_sequences]
+      parameters = default_params.merge(params)
 
-      default_params.merge(params)
+      if block
+        parameters[:stream] = proc do |chunk, _bytesize|
+          yield chunk.dig("choices", 0)
+        end
+      end
+
+      parameters
     end
 
     def compose_chat_messages(prompt:, messages: [], context: "", examples: [])
@@ -210,9 +198,9 @@ module Langchain::LLM
 
       history.concat transform_messages(messages) unless messages.empty?
 
-      unless context.nil? || context.to_s.empty?
+      unless context.nil? || context.empty?
         history.reject! { |message| message[:role] == "system" }
-        history.prepend({role: "system", content: context.content})
+        history.prepend({role: "system", content: context})
       end
 
       unless prompt.empty?
@@ -229,14 +217,16 @@ module Langchain::LLM
     def transform_messages(messages)
       messages.map do |message|
         {
-          role: ROLE_MAPPING.fetch(message.type, message.type),
-          content: message.content
+          role: message[:role],
+          content: message[:content]
         }
       end
     end
 
     def with_api_error_handling
       response = yield
+      return if response.empty?
+
       raise Langchain::LLM::ApiError.new "OpenAI API error: #{response.dig("error", "message")}" if response&.dig("error")
 
       response
@@ -244,6 +234,11 @@ module Langchain::LLM
 
     def validate_max_tokens(messages, model)
       LENGTH_VALIDATOR.validate_max_tokens!(messages, model)
+    end
+
+    def extract_response(response)
+      results = response.dig("choices").map { |choice| choice.dig("message", "content") }
+      (results.size == 1) ? results.first : results
     end
   end
 end

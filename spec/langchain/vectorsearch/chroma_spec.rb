@@ -25,7 +25,7 @@ RSpec.describe Langchain::Vectorsearch::Chroma do
   end
 
   describe "#get_default_schema" do
-    let(:collection) { Chroma::Resources::Collection.new(name: "documents") }
+    let(:collection) { Chroma::Resources::Collection.new(id: collection_id, name: "documents") }
 
     it "returns the collection" do
       allow(Chroma::Resources::Collection).to receive(:get).and_return(collection)
@@ -41,7 +41,8 @@ RSpec.describe Langchain::Vectorsearch::Chroma do
   end
 
   let(:text) { "Hello World" }
-  let(:collection) { Chroma::Resources::Collection.new(name: "documents") }
+  let(:collection_id) { "3ee1c14a-0f08-4632-8161-8b6276ae16b4" }
+  let(:collection) { Chroma::Resources::Collection.new(id: collection_id, name: "documents") }
   let(:embedding) { [0.1, 0.2, 0.3] }
   let(:count) { 1 }
   let(:query) { "Greetings Earth" }
@@ -57,7 +58,7 @@ RSpec.describe Langchain::Vectorsearch::Chroma do
 
   describe "add_texts" do
     before do
-      allow(subject.llm).to receive(:embed).with(text: text).and_return([0.1, 0.2, 0.3])
+      allow(subject.llm).to receive_message_chain(:embed, :embedding).with(text: text).with(no_args).and_return([0.1, 0.2, 0.3])
       allow_any_instance_of(Chroma::Resources::Collection).to receive(:add).and_return(true)
     end
 
@@ -74,7 +75,7 @@ RSpec.describe Langchain::Vectorsearch::Chroma do
 
   describe "update_texts" do
     before do
-      allow(subject.llm).to receive(:embed).with(text: text).and_return([0.1, 0.2, 0.3])
+      allow(subject.llm).to receive_message_chain(:embed, :embedding).with(text: text).with(no_args).and_return([0.1, 0.2, 0.3])
       allow_any_instance_of(Chroma::Resources::Collection).to receive(:update).and_return(true)
     end
 
@@ -102,7 +103,7 @@ RSpec.describe Langchain::Vectorsearch::Chroma do
 
   describe "#similarity_search" do
     before do
-      allow(subject.llm).to receive(:embed).with(text: query).and_return(embedding)
+      allow(subject.llm).to receive_message_chain(:embed, :embedding).with(text: query).with(no_args).and_return(embedding)
       allow(subject).to receive(:similarity_search_by_vector).with(embedding: embedding, k: count).and_return(results)
     end
 

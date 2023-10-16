@@ -59,7 +59,7 @@ client = Langchain::Vectorsearch::Weaviate.new(
 )
 
 # You can instantiate any other supported vector search database:
-client = Langchain::Vectorsearch::Chroma.new(...) # `gem "chroma-db", "~> 0.3.0"`
+client = Langchain::Vectorsearch::Chroma.new(...) # `gem "chroma-db", "~> 0.6.0"`
 client = Langchain::Vectorsearch::Hnswlib.new(...) # `gem "hnswlib", "~> 0.8.1"`
 client = Langchain::Vectorsearch::Milvus.new(...) # `gem "milvus", "~> 0.9.2"`
 client = Langchain::Vectorsearch::Pinecone.new(...) # `gem "pinecone", "~> 0.1.6"`
@@ -97,6 +97,10 @@ client.similarity_search(
 )
 ```
 ```ruby
+# Retrieve similar documents based on the query string passed in via the [HyDE technique](https://arxiv.org/abs/2212.10496)
+client.similarity_search_with_hyde()
+```
+```ruby
 # Retrieve similar documents based on the embedding passed in
 client.similarity_search_by_vector(
     embedding:,
@@ -122,6 +126,21 @@ class Product < ActiveRecord::Base
 
   after_save :upsert_to_vectorsearch
 end
+```
+
+### Exposed ActiveRecord methods
+```ruby
+# Retrieve similar products based on the query string passed in
+Product.similarity_search(
+    query:,
+    k:       # number of results to be retrieved
+)
+```
+```ruby
+# Q&A-style querying based on the question passed in
+Product.ask(
+    question:
+)
 ```
 
 Additional info [here](https://github.com/andreibondarev/langchainrb/blob/main/lib/langchain/active_record/hooks.rb#L10-L38).

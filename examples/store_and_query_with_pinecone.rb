@@ -40,7 +40,7 @@ pinecone.ask(
 
 # Generate an embedding and search by it
 openai = Langchain::LLM::OpenAI.new(api_key: ENV["OPENAI_API_KEY"])
-embedding = openai.embed(text: "veggie")
+embedding = openai.embed(text: "veggie").embedding
 
 pinecone.similarity_search_by_vector(
   embedding: embedding

@@ -32,7 +32,7 @@ module Langchain::Vectorsearch
           }, {
             field_name: "vectors",
             type: ::Milvus::DATA_TYPES["float_vector"],
-            field: Array(texts).map { |text| llm.embed(text: text) }
+            field: Array(texts).map { |text| llm.embed(text: text).embedding }
           }
         ]
       )
@@ -111,7 +111,7 @@ module Langchain::Vectorsearch
     end
 
     def similarity_search(query:, k: 4)
-      embedding = llm.embed(text: query)
+      embedding = llm.embed(text: query).embedding
 
       similarity_search_by_vector(
         embedding: embedding,
@@ -148,7 +148,7 @@ module Langchain::Vectorsearch
 
       context = content_data.join("\n---\n")
 
-      prompt = generate_prompt(question: question, context: context)
+      prompt = generate_rag_prompt(question: question, context: context)
 
       llm.chat(prompt: prompt, &block)
     end
