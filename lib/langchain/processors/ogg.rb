@@ -1,7 +1,8 @@
+# frozen_string_literal: true
 
 module Langchain
   module Processors
-    class OGG < ::Langchain::Processors::Base
+    class Ogg < Base
       EXTENSIONS = [".ogg"]
       CONTENT_TYPES = ["audio/ogg"]
 
@@ -19,7 +20,7 @@ module Langchain
       private
 
       def transcribe(file, open_ai_token)
-        client = OpenAI::Client.new(access_token: open_ai_token)
+        client = ::OpenAI::Client.new(access_token: open_ai_token)
         response = client.audio.transcribe(
           parameters: {
             model: "whisper-1",
