@@ -6,7 +6,7 @@ module Langchain
       EXTENSIONS = [".ogg"]
       CONTENT_TYPES = ["audio/ogg"]
 
-      def initialize
+      def initialize(*)
         depends_on "ruby-openai", req: "openai"
       end
 
@@ -19,8 +19,8 @@ module Langchain
 
       private
 
-      def transcribe(file, open_ai_token)
-        client = ::OpenAI::Client.new(access_token: open_ai_token)
+      def transcribe(file)
+        client = ::OpenAI::Client.new(access_token: ENV['OPENAI_API_TOKEN'])
         response = client.audio.transcribe(
           parameters: {
             model: "whisper-1",
