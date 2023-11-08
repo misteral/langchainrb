@@ -71,6 +71,7 @@ module Langchain::LLM
       parameters[:messages] = compose_chat_messages(prompt: prompt)
       parameters[:max_tokens] = validate_max_tokens(parameters[:messages], parameters[:model])
 
+      Langchain.logger.info("LLM client parameters \"#{parameters.to_json}\"", for: self.class)
       response = with_api_error_handling do
         client.chat(parameters: parameters)
       end
@@ -134,6 +135,7 @@ module Langchain::LLM
         parameters[:max_tokens] = validate_max_tokens(parameters[:messages], parameters[:model])
       end
 
+      Langchain.logger.info("LLM client parameters \"#{parameters.to_json}\"", for: self.class)
       response = with_api_error_handling { client.chat(parameters: parameters) }
 
       return if block
